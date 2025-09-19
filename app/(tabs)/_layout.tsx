@@ -14,9 +14,9 @@ export default function TabsLayout() {
         tabBarInactiveTintColor: '#9CA3AF',
         tabBarStyle: {
           height: Platform.select({
-            ios: insets.bottom + 60,
-            android: insets.bottom + 60,
-            default: 70
+            ios: insets.bottom + 65,
+            android: insets.bottom + 65,
+            default: 75
           }),
           paddingTop: 8,
           paddingBottom: Platform.select({
@@ -30,7 +30,7 @@ export default function TabsLayout() {
           borderTopWidth: 1,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: '500',
         },
       }}>
@@ -40,6 +40,15 @@ export default function TabsLayout() {
           title: 'Главная',
           tabBarIcon: ({ color, size }) => (
             <MaterialIcons name="home" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="tasks"
+        options={{
+          title: 'Задачи',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialIcons name="assignment" size={size} color={color} />
           ),
         }}
       />

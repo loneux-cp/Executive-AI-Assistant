@@ -12,6 +12,7 @@ export default function DocumentsScreen() {
   const { documents, addDocument, deleteDocument, updateDocument } = useDocuments();
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   const [alertConfig, setAlertConfig] = useState<{
     visible: boolean;
@@ -114,6 +115,21 @@ export default function DocumentsScreen() {
     );
   };
 
+  const handlePreviewDocument = (document: Document) => {
+    setSelectedDocument(document);
+    setShowPreview(true);
+  };
+
+  const generateMockPreview = (document: Document) => {
+    const mockContent = {
+      pdf: `📄 ${document.name}\n\nЭто предпросмотр PDF документа.\n\nВ полной версии здесь будет отображаться:\n• Текстовое содержимое\n• Изображения\n• Таблицы\n• Диаграммы\n\nДля MVP показана заглушка.`,
+      docx: `📝 ${document.name}\n\nПредпросмотр DOCX документа.\n\nОсновные разделы:\n1. Введение\n2. Основная часть\n3. Заключение\n\nВ реальном приложении здесь будет полный текст документа.`,
+      txt: `📄 ${document.name}\n\nТекстовый файл готов к просмотру.\n\nСодержание:\n- Структурированный текст\n- Основные разделы\n- Ключевые пункты\n\nВ MVP версии показан пример содержимого.`
+    };
+    
+    return mockContent[document.type] || mockContent.txt;
+  };
+
   const sortedDocuments = documents.sort((a, b) => b.uploadedAt.getTime() - a.uploadedAt.getTime());
 
   return (
@@ -133,7 +149,7 @@ export default function DocumentsScreen() {
           <View style={styles.emptyState}>
             <MaterialIcons name="folder-open" size={64} color="#9CA3AF" />
             <Text style={styles.emptyText}>Нет документов</Text>
-            <Text style={styles.emptySubtext}>Загрузите первый документ для анализа</Text>
+            <Text style={styles.emptySubtext}>Загрузите документы для AI анализа</Text>
             <TouchableOpacity style={styles.uploadPrompt} onPress={handlePickDocument}>
               <MaterialIcons name="cloud-upload" size={24} color="#3B82F6" />
               <Text style={styles.uploadPromptText}>Загрузить документ</Text>
@@ -150,7 +166,7 @@ export default function DocumentsScreen() {
               <View style={styles.documentHeader}>
                 <MaterialIcons
                   name={getFileIcon(document.type)}
-                  size={24}
+                  size={28}
                   color={getFileTypeColor(document.type)}
                 />
                 <View style={styles.documentInfo}>
@@ -168,7 +184,7 @@ export default function DocumentsScreen() {
                 </View>
                 <View style={styles.documentActions}>
                   {document.summary && (
-                    <MaterialIcons name="analytics" size={16} color="#10B981" />
+                    <MaterialIcons name="psychology" size={16} color="#10B981" />
                   )}
                   <MaterialIcons name="chevron-right" size={20} color="#9CA3AF" />
                 </View>
@@ -178,7 +194,8 @@ export default function DocumentsScreen() {
         )}
       </ScrollView>
 
-      <Modal visible={!!selectedDocument} animationType="slide" presentationStyle="pageSheet">
+      {/* Document Detail Modal */}
+      <Modal visible={!!selectedDocument && !showPreview} animationType="slide" presentationStyle="pageSheet">
         {selectedDocument && (
           <View style={[styles.modalContainer, { paddingTop: insets.top }]}>
             <View style={styles.modalHeader}>
@@ -188,12 +205,20 @@ export default function DocumentsScreen() {
               <Text style={styles.modalTitle} numberOfLines={1}>
                 {selectedDocument.name}
               </Text>
-              <TouchableOpacity
-                onPress={() => handleDeleteDocument(selectedDocument.id, selectedDocument.name)}
-                style={styles.deleteButton}
-              >
-                <MaterialIcons name="delete" size={24} color="#EF4444" />
-              </TouchableOpacity>
+              <View style={styles.headerActions}>
+                <TouchableOpacity
+                  onPress={() => handlePreviewDocument(selectedDocument)}
+                  style={styles.previewButton}
+                >
+                  <MaterialIcons name="visibility" size={24} color="#3B82F6" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => handleDeleteDocument(selectedDocument.id, selectedDocument.name)}
+                  style={styles.deleteButton}
+                >
+                  <MaterialIcons name="delete" size={24} color="#EF4444" />
+                </TouchableOpacity>
+              </View>
             </View>
             
             <ScrollView style={styles.documentContent}>
@@ -251,6 +276,14 @@ export default function DocumentsScreen() {
                 {selectedDocument.summary ? (
                   <View style={styles.summaryContainer}>
                     <Text style={styles.summaryText}>{selectedDocument.summary}</Text>
+                    <TouchableOpacity
+                      style={styles.reAnalyzeButton}
+                      onPress={() => handleAnalyzeDocument(selectedDocument)}
+                      disabled={analyzing}
+                    >
+                      <MaterialIcons name="refresh" size={16} color="#3B82F6" />
+                      <Text style={styles.reAnalyzeButtonText}>Обновить анализ</Text>
+                    </TouchableOpacity>
                   </View>
                 ) : (
                   <View style={styles.noAnalysis}>
@@ -259,10 +292,72 @@ export default function DocumentsScreen() {
                       Документ еще не проанализирован
                     </Text>
                     <Text style={styles.noAnalysisSubtext}>
-                      Нажмите "Анализировать" для получения краткого содержания
+                      AI анализ поможет выделить ключевые моменты, найти важные даты и создать задачи
                     </Text>
                   </View>
                 )}
+              </View>
+
+              <View style={styles.quickActions}>
+                <Text style={styles.sectionTitle}>Быстрые действия</Text>
+                <View style={styles.actionButtons}>
+                  <TouchableOpacity 
+                    style={styles.actionButton}
+                    onPress={() => showWebAlert('Создание задач', 'В реальном приложении здесь будут созданы задачи на основе содержимого документа')}
+                  >
+                    <MaterialIcons name="add-task" size={20} color="#3B82F6" />
+                    <Text style={styles.actionButtonText}>Создать задачи</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={styles.actionButton}
+                    onPress={() => showWebAlert('Календарь', 'Даты из документа будут добавлены в календарь')}
+                  >
+                    <MaterialIcons name="event" size={20} color="#10B981" />
+                    <Text style={styles.actionButtonText}>В календарь</Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={styles.actionButton}
+                    onPress={() => showWebAlert('Поиск', 'Функция поиска по документу будет добавлена')}
+                  >
+                    <MaterialIcons name="search" size={20} color="#F59E0B" />
+                    <Text style={styles.actionButtonText}>Поиск</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </ScrollView>
+          </View>
+        )}
+      </Modal>
+
+      {/* Document Preview Modal */}
+      <Modal visible={showPreview} animationType="slide" presentationStyle="fullScreen">
+        {selectedDocument && (
+          <View style={[styles.previewContainer, { paddingTop: insets.top }]}>
+            <View style={styles.previewHeader}>
+              <TouchableOpacity onPress={() => setShowPreview(false)}>
+                <MaterialIcons name="close" size={24} color="#111827" />
+              </TouchableOpacity>
+              <Text style={styles.previewTitle} numberOfLines={1}>
+                {selectedDocument.name}
+              </Text>
+              <TouchableOpacity
+                onPress={() => showWebAlert('Поделиться', 'Функция будет добавлена в следующих версиях')}
+              >
+                <MaterialIcons name="share" size={24} color="#3B82F6" />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.previewContent}>
+              <Text style={styles.previewText}>
+                {generateMockPreview(selectedDocument)}
+              </Text>
+              
+              <View style={styles.previewFooter}>
+                <Text style={styles.previewFooterText}>
+                  В полной версии здесь будет отображаться реальное содержимое документа
+                </Text>
               </View>
             </ScrollView>
           </View>
@@ -416,6 +511,13 @@ const styles = StyleSheet.create({
     color: '#111827',
     marginHorizontal: 16,
   },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  previewButton: {
+    padding: 4,
+  },
   deleteButton: {
     padding: 4,
   },
@@ -454,6 +556,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: '#E5E7EB',
+    marginBottom: 24,
   },
   analysisSectionHeader: {
     flexDirection: 'row',
@@ -492,6 +595,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#374151',
     lineHeight: 20,
+    marginBottom: 12,
+  },
+  reAnalyzeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+  },
+  reAnalyzeButtonText: {
+    fontSize: 12,
+    color: '#3B82F6',
+    fontWeight: '500',
   },
   noAnalysis: {
     alignItems: 'center',
@@ -507,8 +622,79 @@ const styles = StyleSheet.create({
   noAnalysisSubtext: {
     fontSize: 12,
     color: '#9CA3AF',
-    marginTop: 4,
+    marginTop: 8,
     textAlign: 'center',
+  },
+  quickActions: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#F8FAFC',
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  actionButtonText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#374151',
+  },
+  previewContainer: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
+  previewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  previewTitle: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+    marginHorizontal: 16,
+    textAlign: 'center',
+  },
+  previewContent: {
+    flex: 1,
+    padding: 20,
+  },
+  previewText: {
+    fontSize: 16,
+    color: '#374151',
+    lineHeight: 24,
+  },
+  previewFooter: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 8,
+    padding: 16,
+    marginTop: 32,
+  },
+  previewFooterText: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
   alertOverlay: {
     flex: 1,

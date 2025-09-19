@@ -1,15 +1,23 @@
 import React, { useState } from 'react';
-import { View, ScrollView, StyleSheet, Text, TouchableOpacity, Modal, Platform, Alert } from 'react-native';
+import { View, ScrollView, StyleSheet, Text, TouchableOpacity, Modal, Platform, Alert, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useEmail } from '@/hooks/useEmail';
 import { Email } from '@/types';
+import { AIService } from '@/services/aiService';
 
 export default function EmailScreen() {
   const insets = useSafeAreaInsets();
-  const { emails, markAsRead, toggleStar, deleteEmail, unreadCount } = useEmail();
+  const { emails, markAsRead, toggleStar, deleteEmail, unreadCount, addEmail } = useEmail();
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
   const [showCompose, setShowCompose] = useState(false);
+  const [composeData, setComposeData] = useState({
+    to: '',
+    subject: '',
+    body: '',
+  });
+  const [aiAssisting, setAiAssisting] = useState(false);
+  const [selectedTone, setSelectedTone] = useState<'formal' | 'friendly' | 'brief'>('formal');
 
   const [alertConfig, setAlertConfig] = useState<{
     visible: boolean;
@@ -60,6 +68,65 @@ export default function EmailScreen() {
     );
   };
 
+  const handleComposeEmail = () => {
+    if (!composeData.to.trim() || !composeData.subject.trim() || !composeData.body.trim()) {
+      showWebAlert('Ошибка', 'Заполните все обязательные поля');
+      return;
+    }
+
+    // Добавляем письмо как отправленное (в реальном приложении здесь была бы отправка)
+    const newEmail: Omit<Email, 'id' | 'receivedAt'> = {
+      from: 'user@example.com',
+      to: composeData.to,
+      subject: composeData.subject,
+      body: composeData.body,
+      isRead: true,
+      isStarred: false,
+    };
+
+    addEmail(newEmail);
+    setComposeData({ to: '', subject: '', body: '' });
+    setShowCompose(false);
+    showWebAlert('Отправлено', 'Письмо отправлено успешно! (В MVP сохранено локально)');
+  };
+
+  const handleAiAssist = async () => {
+    if (!composeData.subject.trim()) {
+      showWebAlert('Подсказка', 'Введите тему письма для получения лучших предложений от AI');
+      return;
+    }
+
+    setAiAssisting(true);
+    try {
+      const draft = await AIService.generateEmailDraft(composeData.subject, selectedTone);
+      setComposeData(prev => ({ ...prev, body: prev.body + '\n\n' + draft }));
+    } catch (error) {
+      showWebAlert('Ошибка', 'Не удалось получить помощь от AI. Попробуйте позже.');
+    } finally {
+      setAiAssisting(false);
+    }
+  };
+
+  const handleQuickReply = async (originalEmail: Email) => {
+    setAiAssisting(true);
+    try {
+      const replyContext = `Ответ на письмо: "${originalEmail.subject}" от ${originalEmail.from}`;
+      const draft = await AIService.generateEmailDraft(replyContext, 'formal');
+      
+      setComposeData({
+        to: originalEmail.from,
+        subject: `Re: ${originalEmail.subject}`,
+        body: draft,
+      });
+      setSelectedEmail(null);
+      setShowCompose(true);
+    } catch (error) {
+      showWebAlert('Ошибка', 'Не удалось создать черновик ответа');
+    } finally {
+      setAiAssisting(false);
+    }
+  };
+
   const sortedEmails = emails.sort((a, b) => b.receivedAt.getTime() - a.receivedAt.getTime());
 
   return (
@@ -75,7 +142,10 @@ export default function EmailScreen() {
         </View>
         <TouchableOpacity
           style={styles.composeButton}
-          onPress={() => showWebAlert('Написать письмо', 'Функция отправки писем будет добавлена в следующих версиях')}
+          onPress={() => {
+            setComposeData({ to: '', subject: '', body: '' });
+            setShowCompose(true);
+          }}
         >
           <MaterialIcons name="edit" size={24} color="#ffffff" />
         </TouchableOpacity>
@@ -127,6 +197,7 @@ export default function EmailScreen() {
         )}
       </ScrollView>
 
+      {/* Email Detail Modal */}
       <Modal visible={!!selectedEmail} animationType="slide" presentationStyle="pageSheet">
         {selectedEmail && (
           <View style={[styles.modalContainer, { paddingTop: insets.top }]}>
@@ -135,6 +206,13 @@ export default function EmailScreen() {
                 <MaterialIcons name="arrow-back" size={24} color="#111827" />
               </TouchableOpacity>
               <View style={styles.modalActions}>
+                <TouchableOpacity
+                  onPress={() => handleQuickReply(selectedEmail)}
+                  style={styles.actionButton}
+                  disabled={aiAssisting}
+                >
+                  <MaterialIcons name="reply" size={24} color={aiAssisting ? "#9CA3AF" : "#3B82F6"} />
+                </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => toggleStar(selectedEmail.id)}
                   style={styles.actionButton}
@@ -169,11 +247,18 @@ export default function EmailScreen() {
               
               <View style={styles.replySection}>
                 <TouchableOpacity 
-                  style={styles.replyButton}
-                  onPress={() => showWebAlert('Ответить', 'Функция ответа будет добавлена в следующих версиях')}
+                  style={[styles.replyButton, aiAssisting && styles.replyButtonDisabled]}
+                  onPress={() => handleQuickReply(selectedEmail)}
+                  disabled={aiAssisting}
                 >
-                  <MaterialIcons name="reply" size={20} color="#3B82F6" />
-                  <Text style={styles.replyButtonText}>Ответить</Text>
+                  <MaterialIcons 
+                    name={aiAssisting ? "hourglass-empty" : "smart-toy"} 
+                    size={20} 
+                    color={aiAssisting ? "#9CA3AF" : "#3B82F6"} 
+                  />
+                  <Text style={[styles.replyButtonText, aiAssisting && styles.replyButtonTextDisabled]}>
+                    {aiAssisting ? 'Создаю ответ...' : 'AI Ответ'}
+                  </Text>
                 </TouchableOpacity>
                 
                 <TouchableOpacity 
@@ -187,6 +272,99 @@ export default function EmailScreen() {
             </ScrollView>
           </View>
         )}
+      </Modal>
+
+      {/* Compose Modal */}
+      <Modal visible={showCompose} animationType="slide" presentationStyle="pageSheet">
+        <View style={[styles.modalContainer, { paddingTop: insets.top }]}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setShowCompose(false)}>
+              <MaterialIcons name="close" size={24} color="#6B7280" />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Новое письмо</Text>
+            <TouchableOpacity onPress={handleComposeEmail}>
+              <Text style={styles.saveButton}>Отправить</Text>
+            </TouchableOpacity>
+          </View>
+          
+          <ScrollView style={styles.composeContent}>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Кому *</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="email@example.com"
+                value={composeData.to}
+                onChangeText={(text) => setComposeData(prev => ({ ...prev, to: text }))}
+                autoCapitalize="none"
+                keyboardType="email-address"
+              />
+            </View>
+            
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Тема *</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="Тема письма"
+                value={composeData.subject}
+                onChangeText={(text) => setComposeData(prev => ({ ...prev, subject: text }))}
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <View style={styles.aiAssistHeader}>
+                <Text style={styles.inputLabel}>Сообщение *</Text>
+                <TouchableOpacity
+                  style={[styles.aiButton, aiAssisting && styles.aiButtonDisabled]}
+                  onPress={handleAiAssist}
+                  disabled={aiAssisting}
+                >
+                  <MaterialIcons 
+                    name={aiAssisting ? "hourglass-empty" : "smart-toy"} 
+                    size={16} 
+                    color={aiAssisting ? "#9CA3AF" : "#8B5CF6"} 
+                  />
+                  <Text style={[styles.aiButtonText, aiAssisting && styles.aiButtonTextDisabled]}>
+                    {aiAssisting ? 'Помогаю...' : 'AI Помощь'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.toneSelector}>
+                <Text style={styles.toneSelectorLabel}>Стиль:</Text>
+                {[
+                  { key: 'formal' as const, label: 'Деловой' },
+                  { key: 'friendly' as const, label: 'Дружелюбный' },
+                  { key: 'brief' as const, label: 'Краткий' }
+                ].map(tone => (
+                  <TouchableOpacity
+                    key={tone.key}
+                    style={[
+                      styles.toneOption,
+                      selectedTone === tone.key && styles.toneOptionSelected
+                    ]}
+                    onPress={() => setSelectedTone(tone.key)}
+                  >
+                    <Text style={[
+                      styles.toneOptionText,
+                      selectedTone === tone.key && styles.toneOptionTextSelected
+                    ]}>
+                      {tone.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              
+              <TextInput
+                style={[styles.textInput, styles.textArea]}
+                placeholder="Введите текст письма..."
+                value={composeData.body}
+                onChangeText={(text) => setComposeData(prev => ({ ...prev, body: text }))}
+                multiline
+                numberOfLines={8}
+              />
+            </View>
+          </ScrollView>
+        </View>
       </Modal>
 
       {Platform.OS === 'web' && (
@@ -323,6 +501,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  saveButton: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#3B82F6',
+  },
   modalActions: {
     flexDirection: 'row',
     gap: 16,
@@ -375,10 +563,16 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 8,
   },
+  replyButtonDisabled: {
+    backgroundColor: '#F3F4F6',
+  },
   replyButtonText: {
     fontSize: 14,
     fontWeight: '500',
     color: '#3B82F6',
+  },
+  replyButtonTextDisabled: {
+    color: '#9CA3AF',
   },
   forwardButton: {
     flexDirection: 'row',
@@ -393,6 +587,83 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: '#6B7280',
+  },
+  composeContent: {
+    flex: 1,
+    padding: 20,
+  },
+  inputGroup: {
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  textInput: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: '#111827',
+  },
+  textArea: {
+    height: 120,
+    textAlignVertical: 'top',
+  },
+  aiAssistHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  aiButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#F3F0FF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  aiButtonDisabled: {
+    backgroundColor: '#F3F4F6',
+  },
+  aiButtonText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#8B5CF6',
+  },
+  aiButtonTextDisabled: {
+    color: '#9CA3AF',
+  },
+  toneSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  toneSelectorLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  toneOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+  },
+  toneOptionSelected: {
+    backgroundColor: '#3B82F6',
+  },
+  toneOptionText: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  toneOptionTextSelected: {
+    color: '#ffffff',
   },
   alertOverlay: {
     flex: 1,
